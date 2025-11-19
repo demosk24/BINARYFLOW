@@ -83,26 +83,7 @@ export const Login: React.FC = () => {
         const cred = await signInWithEmailAndPassword(auth, ADMIN_CREDENTIALS.email, ADMIN_CREDENTIALS.password);
         await logLogin(cred.user.uid, ADMIN_CREDENTIALS.email, 'ADMIN');
       } catch (err: any) {
-        // If user not found, create it (Seed logic)
-        if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
-          try {
-            const cred = await createUserWithEmailAndPassword(auth, ADMIN_CREDENTIALS.email, ADMIN_CREDENTIALS.password);
-            // Create Admin Profile
-            await setDoc(doc(db, 'users', cred.user.uid), {
-              uid: cred.user.uid,
-              email: ADMIN_CREDENTIALS.email,
-              role: 'ADMIN',
-              isActive: true,
-              deactivatedUntil: null,
-              lastActive: Date.now()
-            });
-            await logLogin(cred.user.uid, ADMIN_CREDENTIALS.email, 'ADMIN');
-          } catch (createErr: any) {
-             setError('Failed to auto-create admin. ' + createErr.message);
-          }
-        } else {
           setError('Admin authentication failed.');
-        }
       }
     } else {
       setError('Invalid administrative credentials.');
