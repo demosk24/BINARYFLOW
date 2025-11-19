@@ -52,31 +52,12 @@ export const Login: React.FC = () => {
     setLoading(true);
 
     // Hardcoded logic for "admin" / "admin" requirement
-    if (username === 'admin' && password === ADMIN_CREDENTIALS.displayPassword) {
+    if (username === 'admin' && password === ADMIN_CREDENTIALS.password) {
       try {
         // Try to sign in with the real internal credentials
         await signInWithEmailAndPassword(auth, ADMIN_CREDENTIALS.email, ADMIN_CREDENTIALS.password);
       } catch (err: any) {
-        // If user not found, create it (Seed logic)
-        if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
-          try {
-            const cred = await createUserWithEmailAndPassword(auth, ADMIN_CREDENTIALS.email, ADMIN_CREDENTIALS.password);
-            // Create Admin Profile
-            await setDoc(doc(db, 'users', cred.user.uid), {
-              uid: cred.user.uid,
-              email: ADMIN_CREDENTIALS.email,
-              role: 'ADMIN',
-              isActive: true,
-              deactivatedUntil: null,
-              lastActive: Date.now()
-            });
-          } catch (createErr: any) {
-             setError('Failed to auto-create admin. ' + createErr.message);
-          }
-        } else {
-          setError('Admin authentication failed.');
-        }
-      }
+       setError('Admin authentication failed.');
     } else {
       setError('Invalid administrative credentials.');
     }
@@ -171,8 +152,7 @@ export const Login: React.FC = () => {
             )}
 
             <div className="text-center">
-               <button 
-                 onClick={() => setIsAdminLogin(true)}
+               <button                 
                  className="flex items-center justify-center gap-2 mx-auto text-sm text-gray-500 hover:text-neon-blue transition-colors hover:underline"
                >
                  <ShieldCheck size={14} /> Admin Login
