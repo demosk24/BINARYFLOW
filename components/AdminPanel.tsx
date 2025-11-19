@@ -2,16 +2,19 @@ import React, { useEffect, useState } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, updateDoc, query, orderBy, addDoc, deleteDoc } from 'firebase/firestore';
 import { UserProfile, Notification, Signal, AppState } from '../types';
-import { Users, Clock, ShieldAlert, Search, Bell, CheckCircle2, Signal as SignalIcon, Trash2, X, TrendingUp, Activity, AlertTriangle } from 'lucide-react';
+import { Users, Clock, ShieldAlert, Search, Bell, CheckCircle2, Signal as SignalIcon, Trash2, X, TrendingUp, Activity, AlertTriangle, CalendarClock } from 'lucide-react';
 
-// Helper for countdown string
+// Helper for countdown string with zero padding
 const getCountdown = (target: number) => {
   const diff = target - Date.now();
   if (diff <= 0) return "00h 00m 00s";
+  
   const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
   const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
   const s = Math.floor((diff % (1000 * 60)) / 1000);
-  return `${h}h ${m}m ${s}s`;
+  
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(h)}h ${pad(m)}m ${pad(s)}s`;
 };
 
 export const AdminPanel: React.FC = () => {
@@ -22,7 +25,8 @@ export const AdminPanel: React.FC = () => {
   const [_, setTick] = useState(0); // Force re-render for timer
 
   // Signal Form State
-  const [newSignal, setNewSignal] = useState({ pair: 'EUR/USD', direction: 'CALL', minutesUntilStart: 2, duration: 5 });
+  const [signalTime, setSignalTime] = useState('');
+  const [newSignal, setNewSignal] = useState({ pair: 'EUR/USD', direction: 'CALL', duration: 5 });
 
   // User Detail Modal State
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
@@ -45,8 +49,8 @@ export const AdminPanel: React.FC = () => {
     const qSignals = query(collection(db, 'signals'), orderBy('startTime', 'asc'));
     const unsubSignals = onSnapshot(qSignals, (snapshot) => {
       const sigList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Signal));
-      // Filter out very old signals (older than 1 hour) locally to keep UI clean
-      const freshSignals = sigList.filter(s => s.startTime > Date.now() - 3600000);
+      // Filter out very old signals (older than 2 hours) locally to keep UI clean
+      const freshSignals = sigList.filter(s => s.startTime > Date.now() - 7200000);
       setSignals(freshSignals);
     });
 
@@ -113,7 +117,24 @@ export const AdminPanel: React.FC = () => {
 
   const handleCreateSignal = async (e: React.FormEvent) => {
     e.preventDefault();
-    const startTime = Date.now() + (newSignal.minutesUntilStart * 60 * 1000);
+    if (!signalTime) {
+        alert("Please select a time");
+        return;
+    }
+
+    // Parse the time input (HH:mm)
+    const [hours, minutes] = signalTime.split(':').map(Number);
+    const now = new Date();
+    
+    // Create date object for today with the selected time
+    let targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0);
+
+    // If the time has already passed today, assume it's for tomorrow
+    if (targetDate.getTime() < now.getTime()) {
+        targetDate.setDate(targetDate.getDate() + 1);
+    }
+
+    const startTime = targetDate.getTime();
     
     try {
       await addDoc(collection(db, 'signals'), {
@@ -121,9 +142,13 @@ export const AdminPanel: React.FC = () => {
         direction: newSignal.direction,
         startTime,
         expiresInMinutes: newSignal.duration,
-        status: 'PENDING'
+        status: 'PENDING',
+        createdAt: Date.now()
       });
-      alert('Signal Broadcasted!');
+      
+      // Reset form, keep pair/duration for convenience
+      setSignalTime('');
+      alert(`Signal Scheduled for ${targetDate.toLocaleTimeString()}!`);
     } catch (error) {
       console.error("Error adding signal", error);
     }
@@ -149,7 +174,7 @@ export const AdminPanel: React.FC = () => {
          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Create Form */}
             <div className="lg:col-span-1 bg-gray-900/50 p-5 rounded-xl border border-gray-700">
-               <h3 className="text-sm font-bold text-gray-300 mb-4">New Signal</h3>
+               <h3 className="text-sm font-bold text-gray-300 mb-4">New Signal Schedule</h3>
                <form onSubmit={handleCreateSignal} className="space-y-4">
                   <div>
                     <label className="text-xs text-gray-500">Asset Pair</label>
@@ -184,16 +209,18 @@ export const AdminPanel: React.FC = () => {
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500">Starts In (Minutes)</label>
+                    <label className="text-xs text-gray-500 flex items-center gap-1"><CalendarClock size={12} /> Execution Time (24h)</label>
                     <input 
-                      type="number" 
-                      value={newSignal.minutesUntilStart}
-                      onChange={e => setNewSignal({...newSignal, minutesUntilStart: Number(e.target.value)})}
-                      className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white text-sm outline-none"
+                      type="time" 
+                      value={signalTime}
+                      onChange={e => setSignalTime(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white text-sm outline-none focus:border-neon-blue"
+                      required
                     />
+                    <p className="text-[10px] text-gray-500 mt-1">Auto-detects Today/Tomorrow based on time.</p>
                   </div>
                   <button type="submit" className="w-full bg-neon-blue text-black font-bold py-2 rounded hover:bg-cyan-400 transition-colors">
-                    Broadcast Signal
+                    Schedule Broadcast
                   </button>
                </form>
             </div>
@@ -206,13 +233,17 @@ export const AdminPanel: React.FC = () => {
                  {signals.map(sig => {
                    const timeUntil = sig.startTime - Date.now();
                    const isStarted = timeUntil <= 0;
+                   const startDate = new Date(sig.startTime);
+                   
                    return (
                      <div key={sig.id} className="flex items-center justify-between p-3 bg-gray-800/40 border border-gray-700 rounded hover:bg-gray-800/60">
                         <div className="flex items-center gap-4">
                           <div className={`w-2 h-2 rounded-full ${isStarted ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></div>
                           <div>
                             <div className="font-bold text-white text-sm">{sig.pair} <span className={sig.direction === 'CALL' ? 'text-green-400' : 'text-red-400'}>{sig.direction}</span></div>
-                            <div className="text-xs text-gray-500">Duration: {sig.expiresInMinutes}m</div>
+                            <div className="text-xs text-gray-500">
+                                Execution: <span className="text-white font-mono">{startDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span> | {sig.expiresInMinutes}m
+                            </div>
                           </div>
                         </div>
                         <div className="text-right">
@@ -316,16 +347,20 @@ export const AdminPanel: React.FC = () => {
                   </td>
                   <td className="px-4 py-3">
                      {user.isActive ? (
-                       <span className="text-neon-green flex items-center gap-1"><CheckCircle2 size={12} /> Active</span>
+                       <span className="text-neon-green flex items-center gap-1 bg-green-500/10 px-2 py-1 rounded border border-green-500/20 w-fit">
+                         <CheckCircle2 size={12} /> Active
+                       </span>
                      ) : (
-                       <div className="text-red-400 flex flex-col">
-                         <span className="flex items-center gap-1"><ShieldAlert size={12} /> Inactive</span>
+                       <div className="flex flex-col items-start gap-1">
+                         <span className="flex items-center gap-1 text-red-400 bg-red-500/10 px-2 py-1 rounded border border-red-500/20 w-fit">
+                           <ShieldAlert size={12} /> Suspended
+                         </span>
                          {user.deactivatedUntil ? (
-                           <span className="text-[10px] text-orange-400 font-mono font-bold mt-1 animate-pulse">
-                             {getCountdown(user.deactivatedUntil)}
+                           <span className="text-[10px] text-orange-400 font-mono font-bold flex items-center gap-1 animate-pulse pl-1">
+                             <Clock size={10} /> {getCountdown(user.deactivatedUntil)}
                            </span>
                          ) : (
-                           <span className="text-[10px] text-red-500 font-mono font-bold">Indefinitely Suspended</span>
+                           <span className="text-[10px] text-gray-500 font-bold pl-1">Indefinitely Suspended</span>
                          )}
                        </div>
                      )}

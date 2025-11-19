@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TradeSettings } from '../types';
 import { ArrowRight, Settings } from 'lucide-react';
 
 interface Props {
   onStart: (settings: TradeSettings) => void;
+  initialCapital?: number;
 }
 
-export const SettingsForm: React.FC<Props> = ({ onStart }) => {
+export const SettingsForm: React.FC<Props> = ({ onStart, initialCapital }) => {
   const [config, setConfig] = useState<TradeSettings>({
     startCapital: 100,
     dailyRiskPercent: 10,
@@ -15,6 +16,12 @@ export const SettingsForm: React.FC<Props> = ({ onStart }) => {
     useBoostMode: true,
     useSafetyMode: true
   });
+
+  useEffect(() => {
+    if (initialCapital !== undefined) {
+      setConfig(prev => ({ ...prev, startCapital: initialCapital }));
+    }
+  }, [initialCapital]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

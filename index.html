@@ -29,6 +29,7 @@
               'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
               'float': 'float 6s ease-in-out infinite',
               'slide-left': 'slideLeft 20s linear infinite',
+              'slide-in-right': 'slideInRight 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) both',
               'glow-blue': 'instrumental-pulse-blue 4s infinite ease-in-out',
               'glow-green': 'instrumental-pulse-green 4s infinite ease-in-out',
               'glow-purple': 'instrumental-pulse-purple 4s infinite ease-in-out',
@@ -44,6 +45,10 @@
               slideLeft: {
                 '0%': { transform: 'translateX(100%)' },
                 '100%': { transform: 'translateX(-100%)' },
+              },
+              slideInRight: {
+                '0%': { transform: 'translateX(100px)', opacity: '0' },
+                '100%': { transform: 'translateX(0)', opacity: '1' }
               },
               shake: {
                 '10%, 90%': { transform: 'translate3d(-1px, 0, 0)' },

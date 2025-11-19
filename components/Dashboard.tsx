@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppState, UserProfile, Signal } from '../types';
 import { calculateNextTradeAmount, calculateProfit, CONSTANTS } from '../utils/logic';
-import { Play, Zap, Shield, Unlock, Wallet, BarChart3, History, Target, Timer, TrendingUp, TrendingDown, Radio, CheckCircle2, XCircle, Activity } from 'lucide-react';
+import { Play, Zap, Shield, Unlock, Wallet, BarChart3, History, Target, Timer, TrendingUp, TrendingDown, Radio, CheckCircle2, XCircle, Activity, Bell, RefreshCw } from 'lucide-react';
 import { CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis } from 'recharts';
 import { db } from '../firebase';
 import { doc, updateDoc, addDoc, collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
@@ -11,9 +11,24 @@ interface Props {
   userProfile: UserProfile;
   onUpdateState: (newState: AppState) => void;
   onReset: () => void;
+  onNewSession: () => void;
 }
 
-export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, onReset }) => {
+// Toast Notification Component
+const ToastNotification: React.FC<{ message: string, onClose: () => void }> = ({ message, onClose }) => (
+  <div className="fixed bottom-4 right-4 z-[100] flex items-center gap-3 p-4 bg-gray-900 border-l-4 border-neon-blue rounded-lg shadow-2xl animate-slide-in-right max-w-sm">
+    <div className="p-2 bg-neon-blue/10 rounded-full">
+      <Radio className="text-neon-blue animate-pulse" size={20} />
+    </div>
+    <div>
+      <h4 className="text-white font-bold text-sm uppercase">New Signal Detected</h4>
+      <p className="text-gray-300 text-xs">{message}</p>
+    </div>
+    <button onClick={onClose} className="ml-2 text-gray-500 hover:text-white">×</button>
+  </div>
+);
+
+export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, onReset, onNewSession }) => {
   const [nextTrade, setNextTrade] = useState(calculateNextTradeAmount(state, state.settings));
   const [countdown, setCountdown] = useState<string | null>(null);
   
@@ -21,8 +36,9 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
   const [effect, setEffect] = useState<'WIN' | 'LOSS' | null>(null);
   
   // Signal State
-  const [latestSignal, setLatestSignal] = useState<Signal | null>(null);
-  const [signalTimer, setSignalTimer] = useState('');
+  const [activeSignals, setActiveSignals] = useState<Signal[]>([]);
+  const [timers, setTimers] = useState<{ [key: string]: string }>({});
+  const [toast, setToast] = useState<string | null>(null);
 
   // Sync logic for calculation
   useEffect(() => {
@@ -37,25 +53,48 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
     }
   }, [effect]);
 
+  // Toast Timer
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
   // Signal Listener
   useEffect(() => {
-    const q = query(collection(db, 'signals'), orderBy('startTime', 'desc'), limit(1));
+    // Listen for upcoming signals
+    const q = query(collection(db, 'signals'), orderBy('startTime', 'asc'));
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const sig = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Signal;
-        // Only show if future or currently active
-        const endTime = sig.startTime + (sig.expiresInMinutes * 60 * 1000);
-        if (endTime > Date.now()) {
-           setLatestSignal(sig);
-        } else {
-           setLatestSignal(null);
+      const allSignals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Signal));
+      
+      // Detect New Signal (if simple length check increases)
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+           const newSig = change.doc.data() as Signal;
+           // Only notify if it's a fresh signal (created in last minute)
+           if (newSig.startTime > Date.now()) {
+             setToast(`New Opportunity: ${newSig.pair} ${newSig.direction}`);
+           }
         }
-      }
+      });
+
+      // Logic: Show signals that are waiting to start OR currently active.
+      // Hide signal if (startTime + durationMinutes + 2 minutes history buffer) < Now
+      const relevantSignals = allSignals.filter(sig => {
+         const endTime = sig.startTime + (sig.expiresInMinutes * 60 * 1000);
+         const historyBuffer = 2 * 60 * 1000; // 2 minutes
+         return Date.now() < (endTime + historyBuffer);
+      });
+
+      // Sort by nearest start time, take top 3
+      setActiveSignals(relevantSignals.slice(0, 3));
     });
     return () => unsubscribe();
   }, []);
 
-  // Timers (User Deactivation & Signal)
+  // Timers (User Deactivation & Signal Countdowns)
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
@@ -77,29 +116,36 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
         setCountdown(null);
       }
 
-      // 2. Signal Timer
-      if (latestSignal) {
-         const timeToStart = latestSignal.startTime - now;
-         if (timeToStart > 0) {
-             const m = Math.floor((timeToStart % (1000 * 60 * 60)) / (1000 * 60));
-             const s = Math.floor((timeToStart % (1000 * 60)) / 1000);
-             setSignalTimer(`STARTS IN ${m}m ${s}s`);
-         } else {
-             const endTime = latestSignal.startTime + (latestSignal.expiresInMinutes * 60 * 1000);
-             const timeToEnd = endTime - now;
-             if (timeToEnd > 0) {
-                 const m = Math.floor((timeToEnd % (1000 * 60 * 60)) / (1000 * 60));
-                 const s = Math.floor((timeToEnd % (1000 * 60)) / 1000);
-                 setSignalTimer(`ACTIVE: ${m}m ${s}s REMAINING`);
-             } else {
-                 setSignalTimer('EXPIRED');
-             }
-         }
-      }
+      // 2. Signal Timers (Multiple)
+      const newTimers: { [key: string]: string } = {};
+      activeSignals.forEach(sig => {
+          const timeToStart = sig.startTime - now;
+          
+          if (timeToStart > 0) {
+              // Countdown to start
+              const h = Math.floor((timeToStart % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+              const m = Math.floor((timeToStart % (1000 * 60 * 60)) / (1000 * 60));
+              const s = Math.floor((timeToStart % (1000 * 60)) / 1000);
+              newTimers[sig.id] = `STARTS IN ${h > 0 ? h + ':' : ''}${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+          } else {
+              // Currently Active
+              const endTime = sig.startTime + (sig.expiresInMinutes * 60 * 1000);
+              const timeToEnd = endTime - now;
+              
+              if (timeToEnd > 0) {
+                   const m = Math.floor((timeToEnd % (1000 * 60 * 60)) / (1000 * 60));
+                   const s = Math.floor((timeToEnd % (1000 * 60)) / 1000);
+                   newTimers[sig.id] = `ACTIVE: ${m}:${s < 10 ? '0' : ''}${s}`;
+              } else {
+                   newTimers[sig.id] = 'COMPLETED';
+              }
+          }
+      });
+      setTimers(newTimers);
 
     }, 1000);
     return () => clearInterval(interval);
-  }, [userProfile, latestSignal]);
+  }, [userProfile, activeSignals]);
 
   const notifyAdmin = async (type: 'TARGET_HIT' | 'LOSS_LIMIT', message: string) => {
     try {
@@ -248,6 +294,9 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
   return (
     <div className={`space-y-6 relative transition-all duration-300 ${effect === 'LOSS' ? 'animate-shake' : ''}`}>
       
+      {/* Toast Notification */}
+      {toast && <ToastNotification message={toast} onClose={() => setToast(null)} />}
+
       {effect === 'WIN' && (
         <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
             {[...Array(50)].map((_, i) => (
@@ -256,27 +305,55 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
         </div>
       )}
 
-      {/* --- TOP BAR: Signal Slide --- */}
-      {latestSignal && (
-        <div className="w-full glass-panel rounded-xl p-1 relative overflow-hidden animate-glow-blue mb-4">
-           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-neon-blue/10 to-transparent animate-slide-left"></div>
-           <div className="relative z-10 flex justify-between items-center px-4 py-2">
-              <div className="flex items-center gap-4">
-                 <div className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded animate-pulse flex items-center gap-1">
-                    <Radio size={10} /> LIVE SIGNAL
-                 </div>
-                 <div className="flex items-center gap-2">
-                    <h3 className="text-xl font-black text-white tracking-tighter">{latestSignal.pair}</h3>
-                    <div className={`flex items-center px-2 py-0.5 rounded text-xs font-bold ${latestSignal.direction === 'CALL' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                       {latestSignal.direction === 'CALL' ? <TrendingUp size={14} className="mr-1"/> : <TrendingDown size={14} className="mr-1"/>}
-                       {latestSignal.direction}
+      <div className="flex justify-end">
+         <button 
+            onClick={onNewSession}
+            disabled={isAccountBlock}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-neon-blue rounded-lg transition-all text-xs font-bold uppercase tracking-wide text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+         >
+            <RefreshCw size={14} className={isAccountBlock ? '' : 'hover:rotate-180 transition-transform duration-500'} />
+            Start New Session
+         </button>
+      </div>
+
+      {/* --- TOP BAR: Signal Command Center (Up to 3 Cards) --- */}
+      {activeSignals.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+           {activeSignals.map((sig) => {
+             const timerText = timers[sig.id] || "CALCULATING...";
+             const isLive = timerText.includes('ACTIVE');
+             const isCompleted = timerText === 'COMPLETED';
+             const startDate = new Date(sig.startTime);
+
+             return (
+              <div key={sig.id} className={`glass-panel rounded-xl p-1 relative overflow-hidden transition-all ${isLive ? 'animate-glow-blue border-neon-blue' : 'border-gray-700'}`}>
+                 {isLive && <div className="absolute inset-0 bg-neon-blue/5 animate-pulse pointer-events-none"></div>}
+                 <div className="relative z-10 bg-[#13131f] p-3 rounded-lg flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                         <div className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 ${isLive ? 'bg-red-600 text-white animate-pulse' : 'bg-gray-700 text-gray-300'}`}>
+                            <Radio size={10} /> {isLive ? 'LIVE' : 'PENDING'}
+                         </div>
+                         <span className="text-gray-500 text-[10px] font-mono">{startDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                         <h3 className="text-lg font-black text-white tracking-tighter">{sig.pair}</h3>
+                         <div className={`flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${sig.direction === 'CALL' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                             {sig.direction === 'CALL' ? <TrendingUp size={12} className="mr-1"/> : <TrendingDown size={12} className="mr-1"/>}
+                             {sig.direction}
+                         </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                       <div className={`font-mono text-sm font-bold ${isLive ? 'text-neon-blue text-shadow-neon' : isCompleted ? 'text-gray-500' : 'text-yellow-400'}`}>
+                          {timerText}
+                       </div>
+                       {isLive && <div className="text-[9px] text-gray-500 mt-1">Duration: {sig.expiresInMinutes}m</div>}
                     </div>
                  </div>
               </div>
-              <div className="font-mono text-xl font-bold text-neon-blue text-shadow-neon">
-                 {signalTimer}
-              </div>
-           </div>
+             )
+           })}
         </div>
       )}
 

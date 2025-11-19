@@ -31,6 +31,9 @@ const App: React.FC = () => {
   // Trading State
   const [state, setState] = useState<AppState>(INITIAL_STATE);
   const [started, setStarted] = useState(false);
+  
+  // Session Rollover State
+  const [tempCapital, setTempCapital] = useState<number | undefined>(undefined);
 
   // Auth Listener & Real-time DB Sync
   useEffect(() => {
@@ -52,13 +55,14 @@ const App: React.FC = () => {
                 setStarted(true);
              } else {
                 // Server has NO data (e.g., after a Global Reset or fresh account)
-                // We must reset local state to ensure UI reflects the "Not Started" state
-                setStarted(false);
-                setState(INITIAL_STATE);
-                
-                // If user was deep in the app, bring them back to Dashboard (which shows SettingsForm if !started)
-                if (view === 'PLAN' || view === 'DASHBOARD') {
-                   setView('DASHBOARD');
+                // Only reset if we are not currently in the middle of creating a new session (tempCapital check)
+                if (!tempCapital) {
+                   setStarted(false);
+                   setState(INITIAL_STATE);
+                   // If user was deep in the app, bring them back to Dashboard
+                   if (view === 'PLAN' || view === 'DASHBOARD') {
+                      setView('DASHBOARD');
+                   }
                 }
              }
            }
@@ -73,7 +77,7 @@ const App: React.FC = () => {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [tempCapital, view]);
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -96,6 +100,7 @@ const App: React.FC = () => {
     // 2. Optimistic Local Update
     setState(newState);
     setStarted(true);
+    setTempCapital(undefined); // Clear temp capital
     
     // 3. Improved Flow: Show the Plan immediately so user sees what they generated
     setView('PLAN'); 
@@ -112,6 +117,15 @@ const App: React.FC = () => {
         alert("Connection error: Could not save settings. Please check your internet.");
       }
     }
+  };
+
+  const handleNewSession = () => {
+    // Capture current capital to carry over
+    setTempCapital(state.currentCapital);
+    // Reset started flag to show SettingsForm
+    setStarted(false);
+    // Ensure view is Dashboard (where SettingsForm lives)
+    setView('DASHBOARD');
   };
 
   const handleReset = async () => {
@@ -270,13 +284,14 @@ const App: React.FC = () => {
           <PlanGenerator settings={state.settings} onStartTrading={() => setView('DASHBOARD')} />
         ) : (
           !started ? (
-            <SettingsForm onStart={handleStart} />
+            <SettingsForm onStart={handleStart} initialCapital={tempCapital} />
           ) : (
             <Dashboard 
               state={state} 
               userProfile={currentUser}
               onUpdateState={setState} 
               onReset={handleReset} 
+              onNewSession={handleNewSession}
             />
           )
         )}
