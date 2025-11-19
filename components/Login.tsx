@@ -12,7 +12,7 @@ export const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (window.location.pathname === '/admin') {
+    if (window.location.pathname === '/sk-admin') {
       setIsAdminLogin(true);
     }
   }, []);
@@ -199,10 +199,10 @@ export const Login: React.FC = () => {
 
             <div className="text-center">
                <button 
-                 onClick={() => setIsAdminLogin(true)}
+                 
                  className="flex items-center justify-center gap-2 mx-auto text-sm text-gray-500 hover:text-neon-blue transition-colors hover:underline"
                >
-                 <ShieldCheck size={14} /> Admin Login
+                 <ShieldCheck size={14} /> Admin Hi
                </button>
             </div>
           </div>
