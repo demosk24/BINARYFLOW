@@ -57,7 +57,8 @@ export const Login: React.FC = () => {
         // Try to sign in with the real internal credentials
         await signInWithEmailAndPassword(auth, ADMIN_CREDENTIALS.email, ADMIN_CREDENTIALS.password);
       } catch (err: any) {
-       setError('Admin authentication failed.');
+         setError('Admin authentication failed.');
+           }
     } else {
       setError('Invalid administrative credentials.');
     }
