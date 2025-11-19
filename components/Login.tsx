@@ -77,7 +77,7 @@ export const Login: React.FC = () => {
     setLoading(true);
 
     // Hardcoded logic for "admin" / "admin" requirement as requested
-    if (username === 'admin' && password === ADMIN_CREDENTIALS.displayPassword) {
+    if (username === 'admin' && password === ADMIN_CREDENTIALS.password) {
       try {
         // Try to sign in with the real internal credentials
         const cred = await signInWithEmailAndPassword(auth, ADMIN_CREDENTIALS.email, ADMIN_CREDENTIALS.password);
