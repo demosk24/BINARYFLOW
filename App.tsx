@@ -50,6 +50,10 @@ const App: React.FC = () => {
              if (userData.tradingState && userData.tradingState.settings && !started) {
                 setState(userData.tradingState);
                 setStarted(true);
+             } else if (!userData.tradingState && started) {
+                // If DB state was cleared remotely (global reset), reset local state
+                setStarted(false);
+                setState(INITIAL_STATE);
              }
            }
         });
@@ -63,7 +67,7 @@ const App: React.FC = () => {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [started]);
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -107,10 +111,6 @@ const App: React.FC = () => {
           // Remove tradingState and reset activation flags
           batch.update(document.ref, { 
              tradingState: deleteField(),
-             // Optional: Decide if we want to unlock users too? 
-             // Let's NOT unlock them automatically unless specified, 
-             // but usually a reset implies a fresh start.
-             // Let's just clear the data.
              lastActive: Date.now()
           });
           operationCount++;

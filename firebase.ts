@@ -5,6 +5,21 @@ import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 // Cast import.meta to any to avoid TS errors about missing 'env' property
 const env = (import.meta as any).env;
 
+// Validate Environment Variables for Vercel/Production
+const requiredKeys = [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_STORAGE_BUCKET',
+  'VITE_FIREBASE_MESSAGING_SENDER_ID',
+  'VITE_FIREBASE_APP_ID'
+];
+
+const missingKeys = requiredKeys.filter(key => !env[key]);
+if (missingKeys.length > 0) {
+  console.error(`[FIREBASE ERROR] Missing Environment Variables: ${missingKeys.join(', ')}. Make sure these are set in your Vercel Project Settings.`);
+}
+
 const firebaseConfig = {
   apiKey: env.VITE_FIREBASE_API_KEY,
   authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Lock, ArrowRight, AlertCircle, ShieldCheck } from 'lucide-react';
 import { auth, db, googleProvider, ADMIN_CREDENTIALS } from '../firebase';
 import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, addDoc, collection } from 'firebase/firestore';
 
 export const Login: React.FC = () => {
   const [isAdminLogin, setIsAdminLogin] = useState(false);
@@ -16,6 +16,20 @@ export const Login: React.FC = () => {
       setIsAdminLogin(true);
     }
   }, []);
+
+  const logLogin = async (uid: string, email: string, type: 'USER' | 'ADMIN') => {
+    try {
+      await addDoc(collection(db, 'activity_logs'), {
+        userId: uid,
+        userEmail: email,
+        type: 'LOGIN',
+        details: `${type} logged in successfully`,
+        timestamp: Date.now()
+      });
+    } catch (e) {
+      console.error("Failed to log login activity", e);
+    }
+  };
 
   const handleGoogleLogin = async () => {
     setError('');
@@ -38,9 +52,19 @@ export const Login: React.FC = () => {
           lastActive: Date.now()
         });
       }
+
+      // Log activity
+      await logLogin(user.uid, user.email || 'Unknown', 'USER');
+
     } catch (err: any) {
-      console.error(err);
-      setError('Google Sign-In failed. Please try again.');
+      console.error("Login Error Full:", err);
+      if (err.code === 'auth/unauthorized-domain') {
+        setError(`Deployment Error: Domain not authorized. Add '${window.location.hostname}' to Firebase Console -> Authentication -> Settings -> Authorized Domains.`);
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        setError('Sign-in cancelled.');
+      } else {
+        setError(err.message || 'Google Sign-In failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -51,14 +75,34 @@ export const Login: React.FC = () => {
     setError('');
     setLoading(true);
 
-    // Hardcoded logic for "admin" / "admin" requirement
-    if (username === 'admin' && password === ADMIN_CREDENTIALS.password) {
+    // Hardcoded logic for "admin" / "admin" requirement as requested
+    if (username === 'admin' && password === ADMIN_CREDENTIALS.displayPassword) {
       try {
         // Try to sign in with the real internal credentials
-        await signInWithEmailAndPassword(auth, ADMIN_CREDENTIALS.email, ADMIN_CREDENTIALS.password);
+        const cred = await signInWithEmailAndPassword(auth, ADMIN_CREDENTIALS.email, ADMIN_CREDENTIALS.password);
+        await logLogin(cred.user.uid, ADMIN_CREDENTIALS.email, 'ADMIN');
       } catch (err: any) {
-         setError('Admin authentication failed.');
-           }
+        // If user not found, create it (Seed logic)
+        if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
+          try {
+            const cred = await createUserWithEmailAndPassword(auth, ADMIN_CREDENTIALS.email, ADMIN_CREDENTIALS.password);
+            // Create Admin Profile
+            await setDoc(doc(db, 'users', cred.user.uid), {
+              uid: cred.user.uid,
+              email: ADMIN_CREDENTIALS.email,
+              role: 'ADMIN',
+              isActive: true,
+              deactivatedUntil: null,
+              lastActive: Date.now()
+            });
+            await logLogin(cred.user.uid, ADMIN_CREDENTIALS.email, 'ADMIN');
+          } catch (createErr: any) {
+             setError('Failed to auto-create admin. ' + createErr.message);
+          }
+        } else {
+          setError('Admin authentication failed.');
+        }
+      }
     } else {
       setError('Invalid administrative credentials.');
     }
@@ -153,7 +197,7 @@ export const Login: React.FC = () => {
             )}
 
             <div className="text-center">
-               <button    
+               <button 
                  onClick={() => setIsAdminLogin(true)}
                  className="flex items-center justify-center gap-2 mx-auto text-sm text-gray-500 hover:text-neon-blue transition-colors hover:underline"
                >
