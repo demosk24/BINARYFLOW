@@ -223,6 +223,7 @@ const App: React.FC = () => {
                  </span>
                )}
              </div>
+             <span className="text-[10px] text-gray-400 font-medium tracking-[0.3em] uppercase mt-1">Trade with RAJIB</span>
              <span className="text-[10px] text-gray-400 font-medium tracking-[0.3em] uppercase mt-1">Professional Trading Intelligence</span>
            </div>
         </div>
