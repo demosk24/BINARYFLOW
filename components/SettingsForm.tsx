@@ -104,7 +104,7 @@ export const SettingsForm: React.FC<Props> = ({ onStart }) => {
              >
                 <div>
                     <h4 className="text-white font-bold text-sm">Safety Protection</h4>
-                    <p className="text-xs text-gray-500">Halt Martingale if loss > 90%</p>
+                    <p className="text-xs text-gray-500">Halt Martingale if loss &gt; 90%</p>
                 </div>
                 <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${config.useSafetyMode ? 'border-neon-green bg-neon-green' : 'border-gray-500'}`}>
                     {config.useSafetyMode && <span className="text-black text-xs">✓</span>}
