@@ -28,11 +28,36 @@
             animation: {
               'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
               'float': 'float 6s ease-in-out infinite',
+              'slide-left': 'slideLeft 20s linear infinite',
+              'glow-blue': 'instrumental-pulse-blue 4s infinite ease-in-out',
+              'glow-green': 'instrumental-pulse-green 4s infinite ease-in-out',
+              'glow-purple': 'instrumental-pulse-purple 4s infinite ease-in-out',
+              'glow-red': 'instrumental-pulse-red 4s infinite ease-in-out',
             },
             keyframes: {
               float: {
                 '0%, 100%': { transform: 'translateY(0)' },
                 '50%': { transform: 'translateY(-10px)' },
+              },
+              slideLeft: {
+                '0%': { transform: 'translateX(100%)' },
+                '100%': { transform: 'translateX(-100%)' },
+              },
+              'instrumental-pulse-blue': {
+                '0%, 100%': { boxShadow: '0 0 10px rgba(0, 243, 255, 0.05)', borderColor: 'rgba(0, 243, 255, 0.1)' },
+                '50%': { boxShadow: '0 0 25px rgba(0, 243, 255, 0.25)', borderColor: 'rgba(0, 243, 255, 0.4)' },
+              },
+              'instrumental-pulse-green': {
+                '0%, 100%': { boxShadow: '0 0 10px rgba(0, 255, 157, 0.05)', borderColor: 'rgba(0, 255, 157, 0.1)' },
+                '50%': { boxShadow: '0 0 25px rgba(0, 255, 157, 0.25)', borderColor: 'rgba(0, 255, 157, 0.4)' },
+              },
+              'instrumental-pulse-purple': {
+                '0%, 100%': { boxShadow: '0 0 10px rgba(188, 19, 254, 0.05)', borderColor: 'rgba(188, 19, 254, 0.1)' },
+                '50%': { boxShadow: '0 0 25px rgba(188, 19, 254, 0.25)', borderColor: 'rgba(188, 19, 254, 0.4)' },
+              },
+              'instrumental-pulse-red': {
+                '0%, 100%': { boxShadow: '0 0 10px rgba(255, 51, 102, 0.05)', borderColor: 'rgba(255, 51, 102, 0.1)' },
+                '50%': { boxShadow: '0 0 25px rgba(255, 51, 102, 0.25)', borderColor: 'rgba(255, 51, 102, 0.4)' },
               }
             }
           }
@@ -41,16 +66,31 @@
     </script>
     <style>
       body {
-        background-color: #020203;
+        background-color: #020617;
+        /* Rich Cyberpunk Gradient */
         background-image: 
-          radial-gradient(at 0% 0%, rgba(0, 243, 255, 0.05) 0px, transparent 50%),
-          radial-gradient(at 100% 0%, rgba(188, 19, 254, 0.05) 0px, transparent 50%),
-          radial-gradient(at 100% 100%, rgba(0, 255, 157, 0.05) 0px, transparent 50%);
+          radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.08), transparent 25%), 
+          radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.08), transparent 25%),
+          linear-gradient(180deg, #020617 0%, #0f172a 50%, #020617 100%);
         background-attachment: fixed;
         color: #e0e0e0;
         font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        min-height: 100vh;
       }
       
+      /* Mesh Grid Background Effect */
+      body::before {
+        content: "";
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background-image: 
+          linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        background-size: 40px 40px;
+        z-index: -1;
+        pointer-events: none;
+      }
+
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
         width: 6px;
@@ -59,7 +99,7 @@
         background: #0a0a12;
       }
       ::-webkit-scrollbar-thumb {
-        background: #333;
+        background: #334155;
         border-radius: 3px;
       }
       ::-webkit-scrollbar-thumb:hover {
@@ -67,19 +107,14 @@
       }
 
       .glass-panel {
-        background: rgba(20, 20, 30, 0.75);
+        background: rgba(15, 23, 42, 0.7);
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
       }
       
-      .pro-card {
-        background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-      }
-
-      /* Subtle Professional Glow - No Spinning */
       .pro-glow {
         position: relative;
         overflow: hidden;
@@ -96,29 +131,61 @@
       }
       
       .pro-glow-green {
-        box-shadow: 0 0 40px -10px rgba(0, 255, 157, 0.1);
+        box-shadow: 0 0 30px -10px rgba(0, 255, 157, 0.15);
         border: 1px solid rgba(0, 255, 157, 0.2);
       }
       
       .pro-glow-red {
-        box-shadow: 0 0 40px -10px rgba(255, 51, 102, 0.1);
+        box-shadow: 0 0 30px -10px rgba(255, 51, 102, 0.15);
         border: 1px solid rgba(255, 51, 102, 0.2);
       }
 
       .text-shadow-neon {
-        text-shadow: 0 0 20px rgba(0, 243, 255, 0.3);
+        text-shadow: 0 0 15px rgba(0, 243, 255, 0.4);
+      }
+
+      /* Button Shine Effect */
+      .btn-shine {
+        position: relative;
+        overflow: hidden;
+      }
+      .btn-shine::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 50%;
+        height: 100%;
+        background: linear-gradient(to right, transparent, rgba(255,255,255,0.15), transparent);
+        transform: skewX(-20deg);
+        transition: none;
+      }
+      .btn-shine:hover::after {
+        left: 150%;
+        transition: 0.7s ease-in-out;
+      }
+
+      /* Input Glow Focus */
+      .input-glow:focus {
+        box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+        border-color: #00f3ff;
+      }
+      
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
       }
     </style>
-<script type="importmap">
+  <script type="importmap">
 {
   "imports": {
+    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
     "recharts": "https://aistudiocdn.com/recharts@^3.4.1",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "vite": "https://aistudiocdn.com/vite@^7.2.2"
+    "vite": "https://aistudiocdn.com/vite@^7.2.2",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
   }
 }
 </script>

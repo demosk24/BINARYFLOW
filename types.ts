@@ -38,3 +38,33 @@ export interface AppState {
 }
 
 export type UserRole = 'ADMIN' | 'USER';
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  deactivatedUntil: number | null; // Timestamp
+  lastActive: number;
+  tradingState?: AppState; // Sync trading state to DB
+  createdAt?: number;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  userEmail: string;
+  type: 'TARGET_HIT' | 'LOSS_LIMIT' | 'SYSTEM';
+  message: string;
+  timestamp: number;
+  read: boolean;
+}
+
+export interface Signal {
+  id: string;
+  pair: string; // e.g. EUR/USD
+  direction: 'CALL' | 'PUT';
+  startTime: number; // Timestamp when it starts
+  expiresInMinutes: number; // How long the signal is valid for
+  status: 'PENDING' | 'ACTIVE' | 'EXPIRED';
+}
