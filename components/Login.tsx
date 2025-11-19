@@ -59,6 +59,7 @@ export const Login: React.FC = () => {
     } catch (err: any) {
       console.error("Login Error Full:", err);
       if (err.code === 'auth/unauthorized-domain') {
+        // Specific handling for the Vercel Domain issue
         setError(`Deployment Error: Domain not authorized. Add '${window.location.hostname}' to Firebase Console -> Authentication -> Settings -> Authorized Domains.`);
       } else if (err.code === 'auth/popup-closed-by-user') {
         setError('Sign-in cancelled.');
@@ -110,7 +111,7 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-[#020203]">
+    <div className="min-h-screen flex items-center justify-center px-4 bg-[#020617]">
       <div className="max-w-md w-full glass-panel p-8 rounded-2xl border border-gray-800 shadow-2xl relative overflow-hidden animate-glow-blue">
         
         <div className="text-center mb-8 relative z-10">

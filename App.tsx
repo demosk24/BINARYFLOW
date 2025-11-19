@@ -8,7 +8,7 @@ import { AppState, TradeSettings, UserRole, UserProfile } from './types';
 import { FileText, LayoutDashboard, LogOut, RotateCcw, Users, AlertTriangle, Loader2 } from 'lucide-react';
 import { auth, db, ensureAdminUser } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, onSnapshot, getDoc, writeBatch, collection, getDocs, deleteField, addDoc } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc, writeBatch, collection, getDocs, deleteField, addDoc, updateDoc } from 'firebase/firestore';
 
 const INITIAL_STATE: AppState = {
   settings: {} as TradeSettings,
@@ -32,28 +32,34 @@ const App: React.FC = () => {
   const [state, setState] = useState<AppState>(INITIAL_STATE);
   const [started, setStarted] = useState(false);
 
-  // Auth Listener & Admin Check
+  // Auth Listener & Real-time DB Sync
   useEffect(() => {
-    // Attempt to seed admin (optional check on load)
     ensureAdminUser();
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Listen to user profile changes (live updates for activation status)
+        // Listen to user profile changes (live updates for activation status and state sync)
         const userRef = doc(db, 'users', user.uid);
         const unsubProfile = onSnapshot(userRef, (docSnap) => {
            if (docSnap.exists()) {
              const userData = docSnap.data() as UserProfile;
              setCurrentUser(userData);
              
-             // If user has saved state in DB, load it
-             if (userData.tradingState && userData.tradingState.settings && !started) {
+             // CRITICAL: Real-time State Synchronization
+             if (userData.tradingState && userData.tradingState.settings) {
+                // Server has data, sync local state to match server
                 setState(userData.tradingState);
                 setStarted(true);
-             } else if (!userData.tradingState && started) {
-                // If DB state was cleared remotely (global reset), reset local state
+             } else {
+                // Server has NO data (e.g., after a Global Reset or fresh account)
+                // We must reset local state to ensure UI reflects the "Not Started" state
                 setStarted(false);
                 setState(INITIAL_STATE);
+                
+                // If user was deep in the app, bring them back to Dashboard (which shows SettingsForm if !started)
+                if (view === 'PLAN' || view === 'DASHBOARD') {
+                   setView('DASHBOARD');
+                }
              }
            }
         });
@@ -67,13 +73,14 @@ const App: React.FC = () => {
       }
     });
     return () => unsubscribe();
-  }, [started]);
+  }, []);
 
   const handleLogout = async () => {
     await signOut(auth);
   };
 
-  const handleStart = (settings: TradeSettings) => {
+  const handleStart = async (settings: TradeSettings) => {
+    // 1. Create the new Initial State
     const newState: AppState = {
       settings,
       currentCapital: settings.startCapital,
@@ -85,23 +92,34 @@ const App: React.FC = () => {
       dailyTargetHit: false,
       maxLossHit: false
     };
+
+    // 2. Optimistic Local Update
     setState(newState);
     setStarted(true);
+    
+    // 3. Improved Flow: Show the Plan immediately so user sees what they generated
+    setView('PLAN'); 
+
+    // 4. Persist to Firebase Immediately
+    if (currentUser) {
+      try {
+        await updateDoc(doc(db, 'users', currentUser.uid), {
+          tradingState: newState,
+          lastActive: Date.now()
+        });
+      } catch (e) {
+        console.error("Failed to save initial state to DB", e);
+        alert("Connection error: Could not save settings. Please check your internet.");
+      }
+    }
   };
 
   const handleReset = async () => {
-    if (window.confirm("⚠️ DANGER ZONE ⚠️\n\nAre you sure you want to perform a GLOBAL RESET?\n\n1. This clears ALL trading data for ALL users.\n2. It cannot be undone.\n3. Users will need to restart their trading session.")) {
+    if (window.confirm("⚠️ DANGER ZONE ⚠️\n\nAre you sure you want to perform a GLOBAL RESET?\n\n1. This clears ALL trading data for ALL users.\n2. It cannot be undone.\n3. Users will see their session reset immediately.")) {
       setIsResetting(true);
       
       try {
-        // 1. Local Reset
-        setStarted(false);
-        setState(INITIAL_STATE);
-        setView('DASHBOARD');
-
-        // 2. Global Firebase Reset for all users
-        // Note: Firestore allows 500 writes per batch. If users > 500, this needs chunking.
-        // For this scope, we assume < 500 users.
+        // Global Firebase Reset for all users
         const batch = writeBatch(db);
         const usersRef = collection(db, 'users');
         const usersSnap = await getDocs(usersRef);
@@ -120,7 +138,7 @@ const App: React.FC = () => {
             await batch.commit();
         }
 
-        // 3. Log Activity
+        // Log Activity
         if (currentUser) {
              await addDoc(collection(db, 'activity_logs'), {
                 userId: currentUser.uid,
@@ -131,7 +149,7 @@ const App: React.FC = () => {
             });
         }
 
-        // 4. Add a system notification for records
+        // System Notification
         await addDoc(collection(db, 'notifications'), {
             userId: 'SYSTEM',
             userEmail: 'SYSTEM',
@@ -141,7 +159,7 @@ const App: React.FC = () => {
             read: false
         });
 
-        // Artificial delay for effect
+        // Delay for visual effect
         await new Promise(r => setTimeout(r, 1500));
 
         alert("✅ SYSTEM WIPE COMPLETE.\n\nAll trading data has been purged.");
@@ -191,7 +209,7 @@ const App: React.FC = () => {
                  </span>
                )}
              </div>
-             <span className="text-[10px] text-gray-400 font-medium tracking-[0.3em] uppercase mt-1">Advanced Money Management</span>
+             <span className="text-[10px] text-gray-400 font-medium tracking-[0.3em] uppercase mt-1">Professional Trading Intelligence</span>
            </div>
         </div>
         <div className="flex items-center gap-4">
@@ -222,19 +240,19 @@ const App: React.FC = () => {
         <div className="flex gap-6 mb-8 border-b border-gray-800 pb-1">
             <button 
               onClick={() => setView('DASHBOARD')}
-              className={`flex items-center gap-2 px-2 py-3 text-sm font-bold border-b-2 transition-all ${view === 'DASHBOARD' ? 'border-neon-blue text-white text-shadow-neon' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
+              disabled={!started}
+              className={`flex items-center gap-2 px-2 py-3 text-sm font-bold border-b-2 transition-all ${view === 'DASHBOARD' ? 'border-neon-blue text-white text-shadow-neon' : 'border-transparent text-gray-500 hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed'}`}
             >
               <LayoutDashboard size={18} /> Live Dashboard
             </button>
             
-            {started && (
-              <button 
-                onClick={() => setView('PLAN')}
-                className={`flex items-center gap-2 px-2 py-3 text-sm font-bold border-b-2 transition-all ${view === 'PLAN' ? 'border-neon-blue text-white text-shadow-neon' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
-              >
-                <FileText size={18} /> Daily Plan
-              </button>
-            )}
+            <button 
+              onClick={() => setView('PLAN')}
+              disabled={!started}
+              className={`flex items-center gap-2 px-2 py-3 text-sm font-bold border-b-2 transition-all ${view === 'PLAN' ? 'border-neon-blue text-white text-shadow-neon' : 'border-transparent text-gray-500 hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+            >
+              <FileText size={18} /> Daily Plan
+            </button>
 
             {currentUser.role === 'ADMIN' && (
               <button 
@@ -249,7 +267,7 @@ const App: React.FC = () => {
         {view === 'ADMIN' && currentUser.role === 'ADMIN' ? (
           <AdminPanel />
         ) : view === 'PLAN' && started ? (
-          <PlanGenerator settings={state.settings} />
+          <PlanGenerator settings={state.settings} onStartTrading={() => setView('DASHBOARD')} />
         ) : (
           !started ? (
             <SettingsForm onStart={handleStart} />

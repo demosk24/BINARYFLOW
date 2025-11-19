@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { AppState, TradeSettings, UserRole, UserProfile, Signal } from '../types';
-import { calculateNextTradeAmount, calculateProfit, getCycleStatus, CONSTANTS } from '../utils/logic';
-import { Play, Zap, Shield, Lock, CheckCircle2, XCircle, Unlock, Wallet, BarChart3, History, Target, Timer, TrendingUp, TrendingDown, Radio } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import React, { useState, useEffect } from 'react';
+import { AppState, UserProfile, Signal } from '../types';
+import { calculateNextTradeAmount, calculateProfit, CONSTANTS } from '../utils/logic';
+import { Play, Zap, Shield, Unlock, Wallet, BarChart3, History, Target, Timer, TrendingUp, TrendingDown, Radio, CheckCircle2, XCircle, Activity } from 'lucide-react';
+import { CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis } from 'recharts';
 import { db } from '../firebase';
 import { doc, updateDoc, addDoc, collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 
@@ -43,7 +43,7 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
         const sig = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Signal;
-        // Only show if future or currently active (start time + duration > now)
+        // Only show if future or currently active
         const endTime = sig.startTime + (sig.expiresInMinutes * 60 * 1000);
         if (endTime > Date.now()) {
            setLatestSignal(sig);
@@ -81,12 +81,10 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
       if (latestSignal) {
          const timeToStart = latestSignal.startTime - now;
          if (timeToStart > 0) {
-             // Counting down to start
              const m = Math.floor((timeToStart % (1000 * 60 * 60)) / (1000 * 60));
              const s = Math.floor((timeToStart % (1000 * 60)) / 1000);
              setSignalTimer(`STARTS IN ${m}m ${s}s`);
          } else {
-             // Active
              const endTime = latestSignal.startTime + (latestSignal.expiresInMinutes * 60 * 1000);
              const timeToEnd = endTime - now;
              if (timeToEnd > 0) {
@@ -103,7 +101,6 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
     return () => clearInterval(interval);
   }, [userProfile, latestSignal]);
 
-  // Notification Trigger Logic
   const notifyAdmin = async (type: 'TARGET_HIT' | 'LOSS_LIMIT', message: string) => {
     try {
       await addDoc(collection(db, 'notifications'), {
@@ -114,8 +111,6 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
         timestamp: Date.now(),
         read: false
       });
-      
-      // Log to activity
       await addDoc(collection(db, 'activity_logs'), {
         userId: userProfile.uid,
         userEmail: userProfile.email,
@@ -123,7 +118,6 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
         details: message,
         timestamp: Date.now()
       });
-
     } catch (e) {
       console.error("Failed to send notification", e);
     }
@@ -141,7 +135,6 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
   };
 
   const handleTrade = async (outcome: 'WIN' | 'LOSS') => {
-    // Trigger animation effect
     setEffect(outcome);
 
     const tradeAmount = nextTrade.amount;
@@ -212,14 +205,12 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
 
     onUpdateState(newState);
 
-    // Sync to Backend
     try {
         await updateDoc(doc(db, 'users', userProfile.uid), {
             tradingState: newState,
             lastActive: Date.now()
         });
 
-        // Log Trade
         await addDoc(collection(db, 'activity_logs'), {
             userId: userProfile.uid,
             userEmail: userProfile.email,
@@ -232,7 +223,6 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
         console.error("Error syncing state", e);
     }
 
-    // Logic: If target/limit hit -> Lock Account & Notify
     if (dailyTargetHit && !state.dailyTargetHit) {
       await notifyAdmin('TARGET_HIT', `User ${userProfile.email} hit daily profit target! Account Locked.`);
       await lockAccount('Daily Target Hit');
@@ -251,16 +241,13 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
     ...state.history.map((t, i) => ({ name: i + 1, balance: t.balanceAfter }))
   ];
 
-  const currentCycle = state.cycles.find(c => c.id === state.currentCycleId);
-  const tradesInCycle = currentCycle?.trades.length || 0;
-
+  const tradesInCycle = state.cycles.find(c => c.id === state.currentCycleId)?.trades.length || 0;
   const isLimitReached = state.maxLossHit || state.dailyTargetHit;
   const isAccountBlock = !userProfile.isActive;
 
   return (
     <div className={`space-y-6 relative transition-all duration-300 ${effect === 'LOSS' ? 'animate-shake' : ''}`}>
       
-      {/* Confetti Effect on Win */}
       {effect === 'WIN' && (
         <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
             {[...Array(50)].map((_, i) => (
@@ -318,36 +305,14 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
                 <div className="text-xl font-mono font-bold text-white">{countdown}</div>
               </div>
             )}
-            
-            {/* Detailed Risk Stats during Block */}
-            <div className="mt-8 grid grid-cols-3 gap-4 w-full max-w-lg text-left">
-                <div className="bg-gray-900/50 p-3 rounded border border-gray-800">
-                    <div className="text-xs text-gray-500">Session P/L</div>
-                    <div className={`text-lg font-bold ${totalProfit >=0 ? 'text-green-400' : 'text-red-400'}`}>
-                        ${totalProfit.toFixed(2)}
-                    </div>
-                </div>
-                 <div className="bg-gray-900/50 p-3 rounded border border-gray-800">
-                    <div className="text-xs text-gray-500">Limit Hit?</div>
-                    <div className="text-lg font-bold text-white">
-                        {state.dailyTargetHit ? 'Target' : state.maxLossHit ? 'Loss' : 'Admin'}
-                    </div>
-                </div>
-                 <div className="bg-gray-900/50 p-3 rounded border border-gray-800">
-                    <div className="text-xs text-gray-500">Trades</div>
-                    <div className="text-lg font-bold text-white">{state.history.length}</div>
-                </div>
-            </div>
           </div>
         )}
 
         {/* Left Column: Stats & Chart */}
         <div className="lg:col-span-8 space-y-6">
-          {/* Header Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Balance Card */}
             <div className={`glass-panel p-5 rounded-2xl relative overflow-hidden group animate-glow-blue transition-transform hover:scale-[1.02] duration-300 ${effect === 'WIN' ? 'border-neon-green' : ''}`}>
-              <div className="absolute z-10 -right-8 -top-8 w-32 h-32 bg-neon-blue/10 rounded-full blur-2xl group-hover:bg-neon-blue/20 transition-all duration-500"></div>
               <div className="relative z-20">
                 <div className="flex items-center gap-2 mb-2 text-gray-400">
                   <div className="p-1.5 bg-neon-blue/10 rounded-lg shadow-[0_0_10px_rgba(0,243,255,0.2)]">
@@ -450,6 +415,53 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
               </ResponsiveContainer>
             </div>
           </div>
+
+          {/* RECENT HISTORY TABLE - NEW FEATURE */}
+          <div className="glass-panel p-6 rounded-2xl border border-white/5">
+             <div className="flex items-center gap-2 mb-4">
+                <Activity size={16} className="text-neon-purple" />
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Recent Transactions</h3>
+             </div>
+             <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left text-gray-400">
+                   <thead className="bg-gray-800/50 uppercase">
+                      <tr>
+                         <th className="px-4 py-2 rounded-l-lg">Time</th>
+                         <th className="px-4 py-2">Strategy</th>
+                         <th className="px-4 py-2">Amount</th>
+                         <th className="px-4 py-2">Result</th>
+                         <th className="px-4 py-2 text-right rounded-r-lg">P/L</th>
+                      </tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-800/30">
+                      {state.history.slice().reverse().slice(0, 6).map((t) => (
+                         <tr key={t.id} className="hover:bg-white/5">
+                            <td className="px-4 py-2 font-mono">{new Date(t.timestamp).toLocaleTimeString()}</td>
+                            <td className="px-4 py-2">
+                               <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                                 t.type === 'MARTINGALE' ? 'border-orange-500/30 text-orange-400' :
+                                 t.type === 'BOOST' ? 'border-purple-500/30 text-purple-400' :
+                                 'border-blue-500/30 text-blue-400'
+                               }`}>{t.type}</span>
+                            </td>
+                            <td className="px-4 py-2 text-white">${t.amount.toFixed(2)}</td>
+                            <td className="px-4 py-2">
+                               <span className={`font-bold ${t.outcome === 'WIN' ? 'text-neon-green' : 'text-red-500'}`}>
+                                 {t.outcome}
+                               </span>
+                            </td>
+                            <td className="px-4 py-2 text-right font-mono text-white">
+                               {t.profit > 0 ? '+' : ''}{t.profit.toFixed(2)}
+                            </td>
+                         </tr>
+                      ))}
+                      {state.history.length === 0 && (
+                         <tr><td colSpan={5} className="p-4 text-center text-gray-500">No trading history available.</td></tr>
+                      )}
+                   </tbody>
+                </table>
+             </div>
+          </div>
         </div>
 
         {/* Right Column: Trade Execution Panel */}
@@ -472,9 +484,7 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
             'pro-glow'
           }`}>
             
-            {/* Main Trade Card Content */}
             <div className="bg-[#13131f] rounded-xl p-6 relative overflow-hidden">
-              {/* Background decoration */}
               <div className="absolute top-0 right-0 p-4 opacity-5 z-0 pointer-events-none">
                 <Play size={120} />
               </div>
