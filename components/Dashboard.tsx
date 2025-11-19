@@ -17,6 +17,9 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
   const [nextTrade, setNextTrade] = useState(calculateNextTradeAmount(state, state.settings));
   const [countdown, setCountdown] = useState<string | null>(null);
   
+  // Visual Effects
+  const [effect, setEffect] = useState<'WIN' | 'LOSS' | null>(null);
+  
   // Signal State
   const [latestSignal, setLatestSignal] = useState<Signal | null>(null);
   const [signalTimer, setSignalTimer] = useState('');
@@ -25,6 +28,14 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
   useEffect(() => {
     setNextTrade(calculateNextTradeAmount(state, state.settings));
   }, [state]);
+
+  // Effect Timer
+  useEffect(() => {
+    if (effect) {
+        const timer = setTimeout(() => setEffect(null), 1000);
+        return () => clearTimeout(timer);
+    }
+  }, [effect]);
 
   // Signal Listener
   useEffect(() => {
@@ -103,6 +114,16 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
         timestamp: Date.now(),
         read: false
       });
+      
+      // Log to activity
+      await addDoc(collection(db, 'activity_logs'), {
+        userId: userProfile.uid,
+        userEmail: userProfile.email,
+        type: 'ALERT',
+        details: message,
+        timestamp: Date.now()
+      });
+
     } catch (e) {
       console.error("Failed to send notification", e);
     }
@@ -120,6 +141,9 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
   };
 
   const handleTrade = async (outcome: 'WIN' | 'LOSS') => {
+    // Trigger animation effect
+    setEffect(outcome);
+
     const tradeAmount = nextTrade.amount;
     const profit = calculateProfit(tradeAmount, state.settings.profitPayoutPercent, outcome);
     const newBalance = state.currentCapital + profit;
@@ -189,10 +213,24 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
     onUpdateState(newState);
 
     // Sync to Backend
-    await updateDoc(doc(db, 'users', userProfile.uid), {
-      tradingState: newState,
-      lastActive: Date.now()
-    });
+    try {
+        await updateDoc(doc(db, 'users', userProfile.uid), {
+            tradingState: newState,
+            lastActive: Date.now()
+        });
+
+        // Log Trade
+        await addDoc(collection(db, 'activity_logs'), {
+            userId: userProfile.uid,
+            userEmail: userProfile.email,
+            type: 'TRADE',
+            details: `${outcome} - ${nextTrade.type} trade of $${tradeAmount} (P/L: ${profit >= 0 ? '+' : ''}${profit.toFixed(2)})`,
+            timestamp: Date.now()
+        });
+
+    } catch (e) {
+        console.error("Error syncing state", e);
+    }
 
     // Logic: If target/limit hit -> Lock Account & Notify
     if (dailyTargetHit && !state.dailyTargetHit) {
@@ -220,8 +258,17 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
   const isAccountBlock = !userProfile.isActive;
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 relative transition-all duration-300 ${effect === 'LOSS' ? 'animate-shake' : ''}`}>
       
+      {/* Confetti Effect on Win */}
+      {effect === 'WIN' && (
+        <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+            {[...Array(50)].map((_, i) => (
+                <div key={i} className="confetti-piece" style={{ left: `${Math.random() * 100}%`, animationDelay: `${Math.random() * 2}s`, backgroundColor: ['#00f3ff', '#00ff9d', '#bc13fe'][Math.floor(Math.random() * 3)] }}></div>
+            ))}
+        </div>
+      )}
+
       {/* --- TOP BAR: Signal Slide --- */}
       {latestSignal && (
         <div className="w-full glass-panel rounded-xl p-1 relative overflow-hidden animate-glow-blue mb-4">
@@ -299,7 +346,7 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
           {/* Header Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Balance Card */}
-            <div className="glass-panel p-5 rounded-2xl relative overflow-hidden group animate-glow-blue transition-transform hover:scale-[1.02] duration-300">
+            <div className={`glass-panel p-5 rounded-2xl relative overflow-hidden group animate-glow-blue transition-transform hover:scale-[1.02] duration-300 ${effect === 'WIN' ? 'border-neon-green' : ''}`}>
               <div className="absolute z-10 -right-8 -top-8 w-32 h-32 bg-neon-blue/10 rounded-full blur-2xl group-hover:bg-neon-blue/20 transition-all duration-500"></div>
               <div className="relative z-20">
                 <div className="flex items-center gap-2 mb-2 text-gray-400">
@@ -308,7 +355,9 @@ export const Dashboard: React.FC<Props> = ({ state, userProfile, onUpdateState, 
                   </div>
                   <p className="text-xs font-medium uppercase tracking-wider">Current Balance</p>
                 </div>
-                <h2 className="text-3xl font-mono font-bold text-white mt-1 tracking-tight">${state.currentCapital.toFixed(2)}</h2>
+                <h2 className={`text-3xl font-mono font-bold text-white mt-1 tracking-tight ${effect === 'WIN' ? 'text-neon-green animate-pop' : ''}`}>
+                    ${state.currentCapital.toFixed(2)}
+                </h2>
                 <div className="flex items-center gap-2 mt-2">
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${totalProfit >= 0 ? 'bg-green-500/20 text-neon-green border border-green-500/30' : 'bg-red-500/20 text-neon-red border border-red-500/30'}`}>
                       {totalProfit >= 0 ? '+' : ''}{((totalProfit/state.settings.startCapital)*100).toFixed(2)}%
